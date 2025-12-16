@@ -535,7 +535,7 @@ class importActorForm extends ImportGenericForm {
         super({ handler, tab });
     }
     static get defaultOptions() {
-        return mergeObject(super.defaultOptions, {
+        return foundry.utils.mergeObject(super.defaultOptions, {
             jQuery: false,
             width: 400,
             top: window.innerHeight - window.innerHeight + 20,
@@ -566,7 +566,7 @@ class importTableForm extends FormApplication {
         return;
     }
     static get defaultOptions() {
-        return mergeObject(super.defaultOptions, {
+        return foundry.utils.mergeObject(super.defaultOptions, {
             jQuery: false,
             width: 400,
             top: window.innerHeight - window.innerHeight + 20,
@@ -581,7 +581,7 @@ class importItemForm extends ImportGenericForm {
         super({ handler, tab });
     }
     static get defaultOptions() {
-        return mergeObject(super.defaultOptions, {
+        return foundry.utils.mergeObject(super.defaultOptions, {
             jQuery: false,
             width: 400,
             top: window.innerHeight - window.innerHeight + 20,
@@ -596,7 +596,7 @@ class importJournalForm extends ImportGenericForm {
         super({ handler, tab });
     }
     static get defaultOptions() {
-        return mergeObject(super.defaultOptions, {
+        return foundry.utils.mergeObject(super.defaultOptions, {
             jQuery: false,
             width: 400,
             top: window.innerHeight - window.innerHeight + 20,

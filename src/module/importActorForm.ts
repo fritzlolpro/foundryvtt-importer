@@ -8,7 +8,7 @@ export class importActorForm extends ImportGenericForm {
   }
 
   static get defaultOptions() {
-    return mergeObject(super.defaultOptions, {
+    return foundry.utils.mergeObject(super.defaultOptions, {
       jQuery: false,
       width: 400,
       top: window.innerHeight - window.innerHeight + 20,
