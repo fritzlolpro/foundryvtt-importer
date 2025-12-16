@@ -5,6 +5,7 @@ const fs = require("fs-extra");
 const gulp = require("gulp");
 const path = require("path");
 const rollupConfig = require("./rollup.config");
+const rollupConfigProd = require("./rollup.config.prod");
 const semver = require("semver");
 
 /********************/
@@ -14,6 +15,7 @@ const semver = require("semver");
 const name = path.basename(path.resolve("."));
 const sourceDirectory = "./src";
 const distDirectory = "./";
+const distDirectoryProd = "./dist";
 const stylesDirectory = `${sourceDirectory}/styles`;
 const stylesExtension = "css";
 const sourceFileExtension = "ts";
@@ -49,6 +51,41 @@ async function copyFiles() {
       await fs.copy(`${sourceDirectory}/${file}`, `${distDirectory}/${file}`);
     }
   }
+}
+
+/**
+ * Build the distributable JavaScript code for production
+ */
+async function buildCodeProd() {
+  const build = await rollup({ input: rollupConfigProd.input, plugins: rollupConfigProd.plugins });
+  return build.write(rollupConfigProd.output);
+}
+
+/**
+ * Build style sheets for production
+ */
+function buildStylesProd() {
+  return gulp.src(`${stylesDirectory}/${name}.${stylesExtension}`).pipe(gulp.dest(`${distDirectoryProd}/styles`));
+}
+
+/**
+ * Copy static files for production
+ */
+async function copyFilesProd() {
+  for (const file of staticFiles) {
+    if (fs.existsSync(`${sourceDirectory}/${file}`)) {
+      await fs.copy(`${sourceDirectory}/${file}`, `${distDirectoryProd}/${file}`);
+    }
+  }
+}
+
+/**
+ * Clean production dist folder
+ */
+async function cleanProd() {
+  console.log(" ", chalk.yellow("Cleaning production dist folder:"));
+  console.log("   ", chalk.blueBright(distDirectoryProd));
+  await fs.remove(distDirectoryProd);
 }
 
 /**
@@ -210,9 +247,12 @@ function bumpVersion(cb) {
 }
 
 const execBuild = gulp.parallel(buildCode, buildStyles, copyFiles);
+const execBuildProd = gulp.parallel(buildCodeProd, buildStylesProd, copyFilesProd);
 
 exports.build = gulp.series(clean, execBuild);
+exports.buildProd = gulp.series(cleanProd, execBuildProd);
 exports.watch = buildWatch;
 exports.clean = clean;
+exports.cleanProd = cleanProd;
 exports.link = linkUserData;
 exports.bumpVersion = bumpVersion;

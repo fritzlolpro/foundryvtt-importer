@@ -21,8 +21,10 @@
   "scripts": {
     "build": "gulp build",
     "build:watch": "gulp watch",
+    "build:prod": "gulp buildProd",
     "link-project": "gulp link",
     "clean": "gulp clean",
+    "clean:prod": "gulp cleanProd",
     "clean:link": "gulp link --clean",
     "bump-version": "gulp bumpVersion",
     "lint": "eslint --ext .ts,.js .",

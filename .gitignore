@@ -21,6 +21,13 @@ foundryconfig.json
 # Distribution files
 dist
 
+# Build artifacts in project root (for dev builds)
+/module/
+/styles/
+/templates/
+/lang/
+/module.json
+
 # ESLint
 .eslintcache
 

@@ -61,7 +61,7 @@ jobs:
         run: npm ci --cache .npm --prefer-offline
 
       - name: Build
-        run: npm run build
+        run: npm run build:prod
         env:
           NODE_ENV: production
 
@@ -107,4 +107,4 @@ jobs:
           allowUpdates: false
           name: ${{steps.extract_version.outputs.version}}
           token: ${{ secrets.GH_PAT }}
-          artifacts: './src/module.json, ./module.zip'
+          artifacts: './dist/module.json, ./module.zip'
