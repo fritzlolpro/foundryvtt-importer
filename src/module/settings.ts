@@ -10,6 +10,7 @@ export class Config {
   tableImporter = true;
   actorImporter = true;
   itemImporter = true;
+  pf2eActorImporter = true;
 
   static keys = {
     folderDepth: 'folderDepth',
@@ -17,6 +18,7 @@ export class Config {
     tableImporter: 'tableImporter',
     actorImporter: 'actorImporter',
     itemImporter: 'itemImporter',
+    pf2eActorImporter: 'pf2eActorImporter',
   };
 
   public load(s: ClientSettingsReader): Config {
@@ -25,6 +27,7 @@ export class Config {
     this.tableImporter = this.getSetting(s, Config.keys.tableImporter);
     this.actorImporter = this.getSetting(s, Config.keys.actorImporter);
     this.itemImporter = this.getSetting(s, Config.keys.itemImporter);
+    this.pf2eActorImporter = this.getSetting(s, Config.keys.pf2eActorImporter);
 
     return this;
   }
@@ -79,6 +82,14 @@ export function registerSettings(): void {
     (game as Game)?.settings?.register(CONSTANTS.module.name, 'itemImporter', {
       name: 'Item Importer (5E only)',
       hint: 'Display the item importer button. This imports clipboard text formatted like an Item or Spell (copied from a PDF) (requires reload)',
+      scope: 'world',
+      config: true,
+      type: Boolean,
+      default: true,
+    });
+    (game as Game)?.settings?.register(CONSTANTS.module.name, 'pf2eActorImporter', {
+      name: 'PF2e Actor Importer',
+      hint: 'Enable Pathfinder 2e actor importing. Works alongside D&D 5e importer - system is auto-detected. (requires reload)',
       scope: 'world',
       config: true,
       type: Boolean,

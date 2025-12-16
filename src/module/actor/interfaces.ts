@@ -223,3 +223,143 @@ export interface Formula {
   afterFormula?: string;
   beforeFormula?: string;
 }
+
+// ============================================================================
+// PF2e (Pathfinder 2e) Specific Interfaces
+// ============================================================================
+
+export type ProficiencyLevel = 'untrained' | 'trained' | 'expert' | 'master' | 'legendary';
+
+export interface PF2eAbility {
+  value: number;
+  mod: number;
+}
+
+export interface PF2eAbilities {
+  str: PF2eAbility;
+  dex: PF2eAbility;
+  con: PF2eAbility;
+  int: PF2eAbility;
+  wis: PF2eAbility;
+  cha: PF2eAbility;
+}
+
+// Type guard for PF2eAbilities
+// eslint-disable-next-line
+export function isPF2eAbilities(obj: any): obj is PF2eAbilities {
+  const hasKeys = 'str' in obj && 'dex' in obj && 'con' in obj && 'int' in obj && 'wis' in obj && 'cha' in obj;
+  if (!hasKeys) return false;
+  if (
+    isNaN(obj.str.mod) ||
+    isNaN(obj.dex.mod) ||
+    isNaN(obj.con.mod) ||
+    isNaN(obj.int.mod) ||
+    isNaN(obj.wis.mod) ||
+    isNaN(obj.cha.mod)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export interface PF2eSave {
+  value: number;
+  proficiency: ProficiencyLevel;
+}
+
+export interface PF2eSaves {
+  fortitude: PF2eSave;
+  reflex: PF2eSave;
+  will: PF2eSave;
+}
+
+export interface PF2eSkill {
+  name: string;
+  bonus: number;
+  proficiency: ProficiencyLevel;
+}
+
+export interface PF2ePerception {
+  value: number;
+  proficiency: ProficiencyLevel;
+  special?: string;
+}
+
+export type ActionCost = 1 | 2 | 3 | 'reaction' | 'free' | 'passive';
+
+export interface PF2eFeature {
+  name: string;
+  description: string;
+  actionCost?: ActionCost;
+  traits?: string[];
+}
+
+export interface PF2eStrike {
+  name: string;
+  description: string;
+  attackBonus?: number;
+  damage?: string;
+  damageType?: string;
+  traits?: string[];
+}
+
+export interface PF2eResistance {
+  type: string;
+  value?: number;
+  exceptions?: string;
+}
+
+export interface PF2eWeakness {
+  type: string;
+  value: number;
+}
+
+export interface PF2eSpeeds {
+  [key: string]: number;
+}
+
+export interface ImportPF2eActor {
+  name: Name;
+  level: number;
+  size: Size;
+  traits: string[];
+  perception: PF2ePerception;
+  languages: Languages;
+  abilities: PF2eAbilities;
+  saves: PF2eSaves;
+  skills: PF2eSkill[];
+  ac: {
+    value: number;
+    proficiency?: ProficiencyLevel;
+    type?: string;
+  };
+  health: Health;
+  speeds: PF2eSpeeds;
+  immunities: string[];
+  resistances: PF2eResistance[];
+  weaknesses: PF2eWeakness[];
+  features: PF2eFeature[];
+  strikes: PF2eStrike[];
+  items?: ImportItems;
+}
+
+export interface ImportPF2eActorParser {
+  parseName: ((lines: string[]) => Name)[];
+  parseLevel: ((lines: string[]) => number)[];
+  parseSize: ((lines: string[]) => Size)[];
+  parseTraits: ((lines: string[]) => string[])[];
+  parsePerception: ((lines: string[]) => PF2ePerception)[];
+  parseLanguages: ((lines: string[]) => Languages)[];
+  parseAbilities: ((lines: string[]) => PF2eAbilities)[];
+  parseSaves: ((lines: string[]) => PF2eSaves)[];
+  parseSkills: ((lines: string[]) => PF2eSkill[])[];
+  parseAC: ((lines: string[]) => { value: number; proficiency?: ProficiencyLevel; type?: string })[];
+  parseHealth: ((lines: string[]) => Health)[];
+  parseSpeeds: ((lines: string[]) => PF2eSpeeds)[];
+  parseImmunities: ((lines: string[]) => string[])[];
+  parseResistances: ((lines: string[]) => PF2eResistance[])[];
+  parseWeaknesses: ((lines: string[]) => PF2eWeakness[])[];
+  parseStrikes: ((lines: string[]) => PF2eStrike[])[];
+  parseFeatures: ((lines: string[]) => PF2eFeature[])[];
+  parseItems: ((lines: string[]) => ImportItems)[];
+}

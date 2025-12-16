@@ -12,6 +12,7 @@ class Config {
         this.tableImporter = true;
         this.actorImporter = true;
         this.itemImporter = true;
+        this.pf2eActorImporter = true;
     }
     load(s) {
         this.folderDepth = this.getSetting(s, Config.keys.folderDepth);
@@ -19,6 +20,7 @@ class Config {
         this.tableImporter = this.getSetting(s, Config.keys.tableImporter);
         this.actorImporter = this.getSetting(s, Config.keys.actorImporter);
         this.itemImporter = this.getSetting(s, Config.keys.itemImporter);
+        this.pf2eActorImporter = this.getSetting(s, Config.keys.pf2eActorImporter);
         return this;
     }
     /**
@@ -37,6 +39,7 @@ Config.keys = {
     tableImporter: 'tableImporter',
     actorImporter: 'actorImporter',
     itemImporter: 'itemImporter',
+    pf2eActorImporter: 'pf2eActorImporter',
 };
 function registerSettings() {
     if (game === {})
@@ -77,6 +80,14 @@ function registerSettings() {
         game?.settings?.register(CONSTANTS.module.name, 'itemImporter', {
             name: 'Item Importer (5E only)',
             hint: 'Display the item importer button. This imports clipboard text formatted like an Item or Spell (copied from a PDF) (requires reload)',
+            scope: 'world',
+            config: true,
+            type: Boolean,
+            default: true,
+        });
+        game?.settings?.register(CONSTANTS.module.name, 'pf2eActorImporter', {
+            name: 'PF2e Actor Importer',
+            hint: 'Enable Pathfinder 2e actor importing. Works alongside D&D 5e importer - system is auto-detected. (requires reload)',
             scope: 'world',
             config: true,
             type: Boolean,
@@ -1548,6 +1559,22 @@ function isAbilities(obj) {
     }
     return true;
 }
+// Type guard for PF2eAbilities
+// eslint-disable-next-line
+function isPF2eAbilities(obj) {
+    const hasKeys = 'str' in obj && 'dex' in obj && 'con' in obj && 'int' in obj && 'wis' in obj && 'cha' in obj;
+    if (!hasKeys)
+        return false;
+    if (isNaN(obj.str.mod) ||
+        isNaN(obj.dex.mod) ||
+        isNaN(obj.con.mod) ||
+        isNaN(obj.int.mod) ||
+        isNaN(obj.wis.mod) ||
+        isNaN(obj.cha.mod)) {
+        return false;
+    }
+    return true;
+}
 
 const FEATURE_SECTIONS = [
     'ACTIONS',
@@ -2746,6 +2773,1054 @@ function textToActor(input) {
     return tryActorParse(ACTOR_PARSERS, lines);
 }
 
+const ParseActorPF2e = {
+    parseName: [parseNamePF2e, parseSimpleNamePF2e, parseCompanionNamePF2e],
+    parseLevel: [parseLevelPF2e, parseSimpleLevelPF2e, parseCompanionLevelPF2e],
+    parseSize: [parseSizePF2e, parseSizeFromTraitsLine, parseSizeFromAlignmentLine],
+    parseTraits: [parseTraitsPF2e, parseTraitsFromAlignmentLine],
+    parsePerception: [parsePerceptionPF2e],
+    parseLanguages: [parseLanguagesPF2e],
+    parseAbilities: [parseAbilitiesPF2e],
+    parseSaves: [parseSavesPF2e],
+    parseSkills: [parseSkillsPF2e, parseSkillSingularPF2e],
+    parseAC: [parseACPF2e],
+    parseHealth: [parseHealthPF2e],
+    parseSpeeds: [parseSpeedsPF2e, parseSimpleSpeedPF2e],
+    parseImmunities: [parseImmunitiesPF2e],
+    parseResistances: [parseResistancesPF2e],
+    parseWeaknesses: [parseWeaknessesPF2e],
+    parseStrikes: [parseStrikesPF2e],
+    parseFeatures: [parseFeaturesPF2e],
+    parseItems: [parseItemsPF2e],
+};
+/**
+ * Parse creature name and level from first line
+ * Format: "Phantasmal Minion       Creature -1" or "Test simple creature 0"
+ * The word "Creature" (case-insensitive) followed by a number indicates the creature level
+ */
+function parseNamePF2e(lines) {
+    const firstLine = lines[0];
+    if (!firstLine)
+        throw new Error('Could not find name line');
+    // Remove "Creature X" part - must be at end with spaces before
+    // Matches both "Name    Creature 5" and "Name creature 0"
+    const match = firstLine.match(/^(.+?)\s+Creature\s+([-\d]+)\s*$/i);
+    if (!match)
+        throw new Error('Could not find "Name Creature Level" pattern in: ' + firstLine);
+    const name = match[1].trim();
+    if (!name)
+        throw new Error('Could not parse name');
+    return name;
+}
+/**
+ * Parse simple name (alternative format without "Creature" keyword)
+ * Format: "Test Simple Monster 5" (where 5 is just a trailing number, not "Creature 5")
+ * This is a fallback parser for non-standard formats
+ */
+function parseSimpleNamePF2e(lines) {
+    const firstLine = lines[0];
+    if (!firstLine)
+        throw new Error('Empty input - could not find name line');
+    // Extract name and level separately
+    // Match "Name Number" where Number is the level at the end
+    const match = firstLine.match(/^(.+?)\s+([-\d]+)\s*$/i);
+    if (!match)
+        throw new Error('Could not find "Name Level" pattern in line: ' + firstLine);
+    const name = match[1].trim();
+    if (!name)
+        throw new Error('Could not parse name from line: ' + firstLine);
+    return name;
+}
+/**
+ * Parse creature level from first line
+ * Format: "Phantasmal Minion       Creature -1"
+ */
+function parseLevelPF2e(lines) {
+    const firstLine = lines[0];
+    if (!firstLine)
+        throw new Error('Empty input - could not find level line');
+    const levelMatch = firstLine.match(/Creature\s+([-\d]+)/i);
+    if (!levelMatch)
+        throw new Error('Could not find "Creature X" pattern in: ' + firstLine);
+    return parseInt(levelMatch[1], 10);
+}
+/**
+ * Parse simple level (just trailing number)
+ * Format: "Test Simple Creature 0"
+ */
+function parseSimpleLevelPF2e(lines) {
+    const firstLine = lines[0];
+    if (!firstLine)
+        throw new Error('Empty input - could not find level line');
+    const levelMatch = firstLine.match(/([-\d]+)\s*$/i);
+    if (!levelMatch)
+        throw new Error('Could not find level number at end of line: ' + firstLine);
+    return parseInt(levelMatch[1], 10);
+}
+/**
+ * Parse companion level (no level in stat block, default to 0)
+ * Format: "PRECIOUS" (companions don't have explicit level)
+ */
+function parseCompanionLevelPF2e(lines) {
+    // Companions typically don't have a level in their stat block
+    // Return 0 as default
+    return 0;
+}
+/**
+ * Parse companion name (just first line without level)
+ * Format: "PRECIOUS"
+ */
+function parseCompanionNamePF2e(lines) {
+    const firstLine = lines[0];
+    if (!firstLine)
+        throw new Error('Empty input - could not find name line');
+    const name = firstLine.trim();
+    if (!name)
+        throw new Error('Could not parse name from empty line');
+    return name;
+}
+/**
+ * Parse size from second line (first word)
+ * Format: "Medium Force Mindless"
+ */
+function parseSizePF2e(lines) {
+    const sizeLine = lines[1];
+    if (!sizeLine)
+        throw new Error('Could not find size line (line 2)');
+    const firstWord = sizeLine.trim().split(/\s+/)[0];
+    const sizeMap = {
+        tiny: 'Tiny',
+        small: 'Small',
+        medium: 'Medium',
+        large: 'Large',
+        huge: 'Huge',
+        gargantuan: 'Gargantuan',
+    };
+    const size = sizeMap[firstWord.toLowerCase()];
+    if (!size)
+        throw new Error(`Could not parse size from first word "${firstWord}" in line: ${sizeLine}`);
+    return size;
+}
+/**
+ * Parse size from traits line (handles formats like "n medium humanoid")
+ * Format: "n medium humanoid" or "medium humanoid"
+ */
+function parseSizeFromTraitsLine(lines) {
+    const traitsLine = lines[1];
+    if (!traitsLine)
+        throw new Error('Could not find traits line (line 2)');
+    const words = traitsLine.trim().toLowerCase().split(/\s+/);
+    const sizeMap = {
+        tiny: 'Tiny',
+        small: 'Small',
+        medium: 'Medium',
+        large: 'Large',
+        huge: 'Huge',
+        gargantuan: 'Gargantuan',
+    };
+    // Look for size keyword in any position
+    for (const word of words) {
+        if (sizeMap[word]) {
+            return sizeMap[word];
+        }
+    }
+    throw new Error(`Could not find size keyword (tiny/small/medium/large/huge/gargantuan) in line: ${traitsLine}`);
+}
+/**
+ * Parse size from alignment line (companion format)
+ * Format: "N SMALL CAT" (alignment + size + traits)
+ */
+function parseSizeFromAlignmentLine(lines) {
+    const alignmentLine = lines[1];
+    if (!alignmentLine)
+        throw new Error('Could not find alignment/size line (line 2)');
+    const words = alignmentLine.trim().split(/\s+/);
+    const sizeMap = {
+        tiny: 'Tiny',
+        small: 'Small',
+        medium: 'Medium',
+        large: 'Large',
+        huge: 'Huge',
+        gargantuan: 'Gargantuan',
+    };
+    // Look for size keyword (usually second word after alignment)
+    for (const word of words) {
+        const normalized = word.toLowerCase();
+        if (sizeMap[normalized]) {
+            return sizeMap[normalized];
+        }
+    }
+    throw new Error(`Could not find size in alignment line: ${alignmentLine}`);
+}
+/**
+ * Parse traits from second line (everything after size)
+ * Format: "Medium Force Mindless" -> ["Force", "Mindless"]
+ * Or "N LARGE ANIMAL" -> ["Animal"]
+ */
+function parseTraitsPF2e(lines) {
+    const traitsLine = lines[1];
+    if (!traitsLine)
+        throw new Error('Could not find traits line');
+    const parts = traitsLine.trim().split(/\s+/);
+    // Remove first word (size)
+    parts.shift();
+    // Convert each trait to title case
+    return parts
+        .filter((t) => t.length > 0)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+/**
+ * Parse traits from alignment line (companion format)
+ * Format: "N SMALL CAT" -> ["Cat"]
+ * Skip alignment (first word) and size (second word)
+ */
+function parseTraitsFromAlignmentLine(lines) {
+    const alignmentLine = lines[1];
+    if (!alignmentLine)
+        return [];
+    const words = alignmentLine.trim().split(/\s+/);
+    // Skip first word (alignment like N, LG, CE, etc.)
+    // Skip size words (tiny, small, medium, large, huge, gargantuan)
+    const sizeWords = ['tiny', 'small', 'medium', 'large', 'huge', 'gargantuan'];
+    const traits = [];
+    for (let i = 1; i < words.length; i++) {
+        const word = words[i];
+        if (!sizeWords.includes(word.toLowerCase())) {
+            // Convert to title case: first letter uppercase, rest lowercase
+            const titleCase = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            traits.push(titleCase);
+        }
+    }
+    return traits;
+}
+/**
+ * Parse perception
+ * Format: "Perception +0; darkvision" or "Perception +8"
+ */
+function parsePerceptionPF2e(lines) {
+    const perceptionLine = lines.find((line) => line.match(/^Perception\s+/i));
+    if (!perceptionLine)
+        throw new Error('Could not find perception line');
+    const match = perceptionLine.match(/Perception\s+([-+]?\d+)/i);
+    if (!match)
+        throw new Error('Could not parse perception');
+    const value = parseInt(match[1], 10);
+    // Try to extract special senses
+    const specialMatch = perceptionLine.match(/;\s*(.+)/i);
+    const special = specialMatch ? specialMatch[1].trim() : undefined;
+    return {
+        value,
+        proficiency: 'trained',
+        special,
+    };
+}
+/**
+ * Parse languages
+ * Format: "Languages Common, Draconic" or "Languages none"
+ */
+function parseLanguagesPF2e(lines) {
+    const langLine = lines.find((line) => line.match(/^Languages\s+/i));
+    if (!langLine)
+        return [];
+    const langText = langLine.replace(/^Languages\s+/i, '').trim();
+    if (langText.toLowerCase() === 'none')
+        return [];
+    return langText.split(',').map((lang) => lang.trim());
+}
+/**
+ * Parse abilities
+ * Format: "Str -4, Dex +2, Con +0, Int -5, Wis +0, Cha +0"
+ */
+function parseAbilitiesPF2e(lines) {
+    const abilityLine = lines.find((line) => line.match(/Str\s+[-+]?\d+/i))?.replace('–', '-');
+    if (!abilityLine)
+        throw new Error('Could not find abilities line');
+    const parseAbility = (abilityName) => {
+        const regex = new RegExp(`${abilityName}\\s+([-+]?\\d+)`, 'i');
+        const match = abilityLine.match(regex);
+        if (!match)
+            throw new Error(`Could not parse ${abilityName}`);
+        return parseInt(match[1], 10);
+    };
+    const str = parseAbility('Str');
+    const dex = parseAbility('Dex');
+    const con = parseAbility('Con');
+    const int = parseAbility('Int');
+    const wis = parseAbility('Wis');
+    const cha = parseAbility('Cha');
+    return {
+        str: { value: 10 + str * 2, mod: str },
+        dex: { value: 10 + dex * 2, mod: dex },
+        con: { value: 10 + con * 2, mod: con },
+        int: { value: 10 + int * 2, mod: int },
+        wis: { value: 10 + wis * 2, mod: wis },
+        cha: { value: 10 + cha * 2, mod: cha },
+    };
+}
+/**
+ * Parse skills
+ * Format: "Skills Stealth +8"
+ */
+function parseSkillsPF2e(lines) {
+    const skillLine = lines.find((line) => line.match(/^Skills\s+/i));
+    if (!skillLine)
+        throw new Error('Could not find "Skills" line');
+    const skillText = skillLine.replace(/^Skills\s+/i, '').trim();
+    const skillPairs = skillText.split(',');
+    const skills = [];
+    for (const pair of skillPairs) {
+        const match = pair.trim().match(/([A-Za-z\s]+)\s+([-+]?\d+)/i);
+        if (match) {
+            skills.push({
+                name: match[1].trim(),
+                bonus: parseInt(match[2], 10),
+                proficiency: 'trained', // Default
+            });
+        }
+    }
+    return skills;
+}
+/**
+ * Parse skills (singular form for companions)
+ * Format: "Skill Acrobatics +6, Athletics +5"
+ */
+function parseSkillSingularPF2e(lines) {
+    const skillLine = lines.find((line) => line.match(/^Skill\s+/i));
+    if (!skillLine)
+        throw new Error('Could not find "Skill" line');
+    const skillText = skillLine.replace(/^Skill\s+/i, '').trim();
+    const skillPairs = skillText.split(',');
+    const skills = [];
+    for (const pair of skillPairs) {
+        const match = pair.trim().match(/([A-Za-z\s]+)\s+([-+]?\d+)/i);
+        if (match) {
+            skills.push({
+                name: match[1].trim(),
+                bonus: parseInt(match[2], 10),
+                proficiency: 'trained', // Default
+            });
+        }
+    }
+    return skills;
+}
+/**
+ * Parse saves
+ * Format: "AC 13; Fort +0, Ref +4, Will +0"
+ */
+function parseSavesPF2e(lines) {
+    const saveLine = lines.find((line) => line.match(/Fort\s+[-+]?\d+/i));
+    if (!saveLine)
+        throw new Error('Could not find saves line');
+    const parseSave = (saveName) => {
+        const regex = new RegExp(`${saveName}\\s+([-+]?\\d+)`, 'i');
+        const match = saveLine.match(regex);
+        if (!match)
+            throw new Error(`Could not parse ${saveName}`);
+        return parseInt(match[1], 10);
+    };
+    return {
+        fortitude: {
+            value: parseSave('Fort'),
+            proficiency: 'trained', // Default
+        },
+        reflex: {
+            value: parseSave('Ref'),
+            proficiency: 'trained',
+        },
+        will: {
+            value: parseSave('Will'),
+            proficiency: 'trained',
+        },
+    };
+}
+/**
+ * Parse AC
+ * Format: "AC 13; Fort +0, Ref +4, Will +0"
+ */
+function parseACPF2e(lines) {
+    const acLine = lines.find((line) => line.match(/^AC\s+\d+/i));
+    if (!acLine)
+        throw new Error('Could not find AC line');
+    const match = acLine.match(/AC\s+(\d+)/i);
+    if (!match)
+        throw new Error('Could not parse AC');
+    return {
+        value: parseInt(match[1], 10),
+        proficiency: 'trained',
+    };
+}
+/**
+ * Parse HP
+ * Format: "HP 4; Immunities disease..." or "HP 52 (8d8 + 16)"
+ */
+function parseHealthPF2e(lines) {
+    const hpLine = lines.find((line) => line.match(/^HP\s+\d+/i));
+    if (!hpLine)
+        throw new Error('Could not find HP line');
+    const parsed = parseGenericFormula(hpLine.toLowerCase(), /hp\s+(.*)/);
+    const { value, str } = parsed;
+    return {
+        value: value || 0,
+        min: 0,
+        max: value || 0,
+        formula: str,
+    };
+}
+/**
+ * Parse speeds
+ * Format: "Speed fly 30 feet" or "Speed 25 feet, fly 30 feet"
+ */
+function parseSpeedsPF2e(lines) {
+    const speedLine = lines.find((line) => line.match(/^Speed\s+/i));
+    if (!speedLine)
+        return { walk: 30 };
+    const speedText = speedLine.replace(/^Speed\s+/i, '').trim();
+    const speeds = {};
+    // Match pattern like "25 feet" or "fly 30 feet"
+    const speedRegex = /(?:(\w+)\s+)?(\d+)\s*(?:feet|ft)/gi;
+    let match;
+    while ((match = speedRegex.exec(speedText)) !== null) {
+        const speedType = match[1] ? match[1].toLowerCase() : 'walk';
+        const speedValue = parseInt(match[2], 10);
+        speeds[speedType] = speedValue;
+    }
+    // If no walk speed, default to 30
+    if (!speeds.walk) {
+        speeds.walk = 30;
+    }
+    return speeds;
+}
+/**
+ * Parse simple speed (companions)
+ * Format: "Speed 35 feet" (just one number, defaults to land speed)
+ */
+function parseSimpleSpeedPF2e(lines) {
+    const speedLine = lines.find((line) => line.match(/^Speed\s+/i));
+    if (!speedLine)
+        throw new Error('Could not find Speed line');
+    // Match "Speed 35 feet" or "Speed 35"
+    const match = speedLine.match(/Speed\s+(\d+)\s*(?:feet)?/i);
+    if (!match)
+        throw new Error(`Could not parse speed from line: ${speedLine}`);
+    const speedValue = parseInt(match[1], 10);
+    return { land: speedValue };
+}
+/**
+ * Parse immunities
+ * Format: "HP 4; Immunities disease, mental, non-magical attacks..."
+ */
+function parseImmunitiesPF2e(lines) {
+    const immuneLine = lines.find((line) => line.match(/Immunities\s+/i));
+    if (!immuneLine)
+        return [];
+    const match = immuneLine.match(/Immunities\s+([^;]+)/i);
+    if (!match)
+        return [];
+    return match[1]
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+}
+/**
+ * Parse resistances
+ * Format: "Resistances all damage 5 (except force or ghost touch)"
+ */
+function parseResistancesPF2e(lines) {
+    const resistLine = lines.find((line) => line.match(/Resistances\s+/i));
+    if (!resistLine)
+        return [];
+    const match = resistLine.match(/Resistances\s+([^;]+)/i);
+    if (!match)
+        return [];
+    const resistText = match[1].trim();
+    const resistances = [];
+    // Simple parsing: "type value" or "type value (exceptions)"
+    const resistRegex = /([a-z\s]+)\s+(\d+)(?:\s*\(([^)]+)\))?/gi;
+    let resistMatch;
+    while ((resistMatch = resistRegex.exec(resistText)) !== null) {
+        resistances.push({
+            type: resistMatch[1].trim(),
+            value: parseInt(resistMatch[2], 10),
+            exceptions: resistMatch[3] ? resistMatch[3].trim() : undefined,
+        });
+    }
+    return resistances;
+}
+/**
+ * Parse weaknesses
+ * Format: "Weaknesses cold iron 5, good 5"
+ */
+function parseWeaknessesPF2e(lines) {
+    const weakLine = lines.find((line) => line.match(/Weaknesses\s+/i));
+    if (!weakLine)
+        return [];
+    const match = weakLine.match(/Weaknesses\s+([^;]+)/i);
+    if (!match)
+        return [];
+    const weakText = match[1].trim();
+    const weaknesses = [];
+    // Parse "type value" pairs
+    const weakRegex = /([a-z\s]+)\s+(\d+)/gi;
+    let weakMatch;
+    while ((weakMatch = weakRegex.exec(weakText)) !== null) {
+        weaknesses.push({
+            type: weakMatch[1].trim(),
+            value: parseInt(weakMatch[2], 10),
+        });
+    }
+    return weaknesses;
+}
+/**
+ * Parse strikes/attacks
+ * Format: "Melee [one-action] jaws +10, Damage 1d10+4 piercing plus Grab"
+ * Format: "Ranged shortbow +7 (deadly d10), Damage 1d6 piercing"
+ */
+function parseStrikesPF2e(lines) {
+    const strikes = [];
+    for (const line of lines) {
+        // Match Melee or Ranged attacks
+        const strikeMatch = line.match(/^(Melee|Ranged)\s+\[([^\]]+)\]\s+(.+)/i);
+        if (!strikeMatch)
+            continue;
+        const strikeType = strikeMatch[1]; // Melee or Ranged
+        strikeMatch[2]; // one-action, two-actions, etc.
+        const details = strikeMatch[3];
+        // Parse: "jaws +10 (traits), Damage 1d10+4 piercing plus Grab"
+        // or: "jaws +10, Damage 1d10+4 piercing plus Grab"
+        const nameAndBonus = details.split(',')[0]; // "jaws +10 (traits)" or "jaws +10"
+        // Extract name
+        const nameMatch = nameAndBonus.match(/^([^+]+)/);
+        const name = nameMatch ? nameMatch[1].trim() : 'Unknown';
+        // Extract attack bonus
+        const bonusMatch = nameAndBonus.match(/\+(\d+)/);
+        const attackBonus = bonusMatch ? parseInt(bonusMatch[1], 10) : undefined;
+        // Extract traits (optional, in parentheses)
+        const traitsMatch = nameAndBonus.match(/\(([^)]+)\)/);
+        const traits = traitsMatch
+            ? traitsMatch[1].split(',').map(t => t.trim())
+            : [];
+        // Extract damage
+        const damageMatch = details.match(/Damage\s+([^,]+)/i);
+        let damage;
+        let damageType;
+        if (damageMatch) {
+            const damageText = damageMatch[1].trim();
+            // Parse "1d10+4 piercing plus Grab"
+            const damageParts = damageText.match(/^([\dd+\s-]+)\s+(\w+)/);
+            if (damageParts) {
+                damage = damageParts[1].trim();
+                damageType = damageParts[2].trim();
+            }
+            else {
+                damage = damageText;
+            }
+        }
+        strikes.push({
+            name: `${strikeType}: ${name}`,
+            description: line,
+            attackBonus,
+            damage,
+            damageType,
+            traits: traits.length > 0 ? traits : undefined,
+        });
+    }
+    return strikes;
+}
+/**
+ * Parse features/abilities
+ * Formats:
+ * - "Deep Breath The crocodile can hold..." (passive, between abilities and AC)
+ * - "Aquatic Ambush [one-action] When hiding..." (active, after HP)
+ * - "Grab [one-action] After succeeding..." (active, after HP)
+ */
+function parseFeaturesPF2e(lines) {
+    const features = [];
+    // Find where abilities end (last line starting with "Str" or abilities line)
+    let abilitiesEndIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+        if (lines[i].match(/Str\s+[-+]?\d+/i)) {
+            abilitiesEndIndex = i;
+            break;
+        }
+    }
+    if (abilitiesEndIndex === -1)
+        return [];
+    // Features can appear:
+    // 1. Between abilities and AC (passive features)
+    // 2. After HP line (active features, actions)
+    let currentFeature = null;
+    for (let i = abilitiesEndIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line)
+            continue;
+        // Skip stat lines (AC, HP, Speed, etc.)
+        const isStatLine = line.match(/^(AC|HP|Speed|Fort|Ref|Will|Immunities|Resistances|Weaknesses)\s+/i);
+        if (isStatLine)
+            continue;
+        // Also check for Melee/Ranged (those are strikes, not features)
+        const isStrike = line.match(/^(Melee|Ranged)\s+/i);
+        if (isStrike)
+            continue;
+        // Check if this is a new feature
+        // Pattern 1: "Feature Name [one-action] description"
+        // Pattern 2: "Feature Name description" (no action cost)
+        // Features always start with uppercase letter
+        const startsWithCapital = /^[A-Z]/.test(line);
+        if (startsWithCapital && !isStrike) {
+            // This might be a new feature
+            // Save previous feature if exists
+            if (currentFeature) {
+                const description = currentFeature.lines.join(' ');
+                const actionMatch = description.match(/\[([^\]]+)\]/);
+                let actionCost;
+                if (actionMatch) {
+                    const action = actionMatch[1].toLowerCase();
+                    if (action.includes('one-action'))
+                        actionCost = 1;
+                    else if (action.includes('two-action'))
+                        actionCost = 2;
+                    else if (action.includes('three-action'))
+                        actionCost = 3;
+                    else if (action.includes('reaction'))
+                        actionCost = 'reaction';
+                    else if (action.includes('free'))
+                        actionCost = 'free';
+                }
+                // Extract traits from parentheses
+                const traitsMatch = description.match(/\(([^)]+)\)/);
+                const traits = traitsMatch
+                    ? traitsMatch[1].split(',').map(t => t.trim())
+                    : undefined;
+                features.push({
+                    name: currentFeature.name,
+                    description,
+                    actionCost,
+                    traits,
+                });
+            }
+            // Start new feature - extract name
+            // Name is everything before the first [action] or before the description starts
+            let name;
+            const actionBracketMatch = line.match(/^([^[]+)\s*\[/);
+            if (actionBracketMatch) {
+                // Has action cost like "Aquatic Ambush [one-action]"
+                name = actionBracketMatch[1].trim();
+            }
+            else {
+                // No action cost - name is the first few capitalized words
+                // "Deep Breath The crocodile..." -> "Deep Breath"
+                // Look for pattern: "Capitalized Words" followed by article/pronoun/lowercase start
+                const wordsMatch = line.match(/^([A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*)*)\s+(?:The|the|A|a|An|an|When|when|After|after|If|if|It|it|This|this)/);
+                if (wordsMatch) {
+                    name = wordsMatch[1].trim();
+                }
+                else {
+                    // Fallback: take words until we hit lowercase or description
+                    const words = line.split(/\s+/);
+                    let nameWords = [];
+                    for (const word of words) {
+                        if (/^[A-Z]/.test(word)) {
+                            nameWords.push(word);
+                        }
+                        else {
+                            break;
+                        }
+                    }
+                    name = nameWords.length > 0 ? nameWords.join(' ') : words[0];
+                }
+            }
+            currentFeature = {
+                name,
+                lines: [line],
+            };
+        }
+        else if (currentFeature && !isStrike) {
+            // Continue current feature (multiline description)
+            currentFeature.lines.push(line);
+        }
+    }
+    // Save last feature
+    if (currentFeature) {
+        const description = currentFeature.lines.join(' ');
+        const actionMatch = description.match(/\[([^\]]+)\]/);
+        let actionCost;
+        if (actionMatch) {
+            const action = actionMatch[1].toLowerCase();
+            if (action.includes('one-action'))
+                actionCost = 1;
+            else if (action.includes('two-action'))
+                actionCost = 2;
+            else if (action.includes('three-action'))
+                actionCost = 3;
+            else if (action.includes('reaction'))
+                actionCost = 'reaction';
+            else if (action.includes('free'))
+                actionCost = 'free';
+        }
+        const traitsMatch = description.match(/\(([^)]+)\)/);
+        const traits = traitsMatch
+            ? traitsMatch[1].split(',').map(t => t.trim())
+            : undefined;
+        features.push({
+            name: currentFeature.name,
+            description,
+            actionCost,
+            traits,
+        });
+    }
+    return features;
+}
+/**
+ * Parse items (placeholder)
+ */
+function parseItemsPF2e(lines) {
+    // Items parsing can be added later
+    return [];
+}
+
+/**
+ * Try to parse using a single PF2e parser
+ */
+function trySinglePF2eActorParse(parser, lines) {
+    const errors = [];
+    // Helper function to try parsers in sequence with error tracking
+    function tryParser(parsers, lines, typeGuard, fieldName, options) {
+        for (let i = 0; i < parsers.length; i++) {
+            const parserFn = parsers[i];
+            try {
+                const result = parserFn(lines);
+                if (typeGuard(result)) {
+                    return result;
+                }
+            }
+            catch (e) {
+                // Log error for debugging
+                const errorMsg = e instanceof Error ? e.message : String(e);
+                errors.push(`${fieldName} (parser ${i + 1}/${parsers.length}): ${errorMsg}`);
+            }
+        }
+        if (options?.isOptional && options.defaultValue !== undefined) {
+            return options.defaultValue;
+        }
+        const errorDetails = errors.filter(e => e.startsWith(fieldName)).join('\n  ');
+        throw new Error(`Failed to parse ${fieldName}. Errors:\n  ${errorDetails}`);
+    }
+    // Type guards
+    const isString = (value) => typeof value === 'string';
+    const isNumber = (value) => typeof value === 'number' && !isNaN(value);
+    const isStringArray = (value) => Array.isArray(value);
+    const isPF2eSkillArray = (value) => Array.isArray(value);
+    const isPF2eSaves = (value) => typeof value === 'object' && value !== null && 'fortitude' in value;
+    const isPF2eSpeeds = (value) => typeof value === 'object' && value !== null;
+    const isHealth = (value) => typeof value === 'object' && value !== null && 'value' in value;
+    const isPF2ePerception = (value) => typeof value === 'object' && value !== null && 'value' in value;
+    const isPF2eResistanceArray = (value) => Array.isArray(value);
+    const isPF2eWeaknessArray = (value) => Array.isArray(value);
+    const isPF2eFeatureArray = (value) => Array.isArray(value);
+    const isPF2eStrikeArray = (value) => Array.isArray(value);
+    const isImportItems = (value) => Array.isArray(value);
+    const isACType = (value) => typeof value === 'object' && value !== null && 'value' in value;
+    const abilities = tryParser(parser.parseAbilities, lines, isPF2eAbilities, 'abilities');
+    return {
+        name: tryParser(parser.parseName, lines, isString, 'name'),
+        level: tryParser(parser.parseLevel, lines, isNumber, 'level'),
+        size: tryParser(parser.parseSize, lines, (value) => true, 'size'),
+        traits: tryParser(parser.parseTraits, lines, isStringArray, 'traits', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        perception: tryParser(parser.parsePerception, lines, isPF2ePerception, 'perception'),
+        languages: tryParser(parser.parseLanguages, lines, isStringArray, 'languages', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        abilities,
+        saves: tryParser(parser.parseSaves, lines, isPF2eSaves, 'saves'),
+        skills: tryParser(parser.parseSkills, lines, isPF2eSkillArray, 'skills', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        ac: tryParser(parser.parseAC, lines, isACType, 'ac'),
+        health: tryParser(parser.parseHealth, lines, isHealth, 'health'),
+        speeds: tryParser(parser.parseSpeeds, lines, isPF2eSpeeds, 'speeds', {
+            isOptional: true,
+            defaultValue: { walk: 30 },
+        }),
+        immunities: tryParser(parser.parseImmunities, lines, isStringArray, 'immunities', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        resistances: tryParser(parser.parseResistances, lines, isPF2eResistanceArray, 'resistances', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        weaknesses: tryParser(parser.parseWeaknesses, lines, isPF2eWeaknessArray, 'weaknesses', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        strikes: tryParser(parser.parseStrikes, lines, isPF2eStrikeArray, 'strikes', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        features: tryParser(parser.parseFeatures, lines, isPF2eFeatureArray, 'features', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+        items: tryParser(parser.parseItems, lines, isImportItems, 'items', {
+            isOptional: true,
+            defaultValue: [],
+        }),
+    };
+}
+/**
+ * Try multiple parsers until one succeeds
+ */
+function tryPF2eActorParse(parsers, lines) {
+    const allErrors = [];
+    for (let i = 0; i < parsers.length; i++) {
+        const parser = parsers[i];
+        try {
+            return trySinglePF2eActorParse(parser, lines);
+        }
+        catch (e) {
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            allErrors.push(`\n=== Parser ${i + 1}/${parsers.length} failed ===\n${errorMsg}`);
+        }
+    }
+    // If we got here, all parsers failed - throw detailed error
+    const detailedError = `Failed to parse PF2e actor. Tried ${parsers.length} parser(s):\n${allErrors.join('\n')}`;
+    throw new Error(detailedError);
+}
+/**
+ * Convert text to PF2e actor
+ */
+function textToPF2eActor(input) {
+    const lines = input.split('\n');
+    const availableParsers = [ParseActorPF2e];
+    return tryPF2eActorParse(availableParsers, lines);
+}
+
+/**
+ * Convert proficiency level to numeric rank
+ * @param proficiency - The proficiency level
+ * @returns Numeric rank (0-4)
+ */
+function proficiencyToRank(proficiency) {
+    const rankMap = {
+        untrained: 0,
+        trained: 1,
+        expert: 2,
+        master: 3,
+        legendary: 4,
+    };
+    return rankMap[proficiency];
+}
+/**
+ * Convert size to PF2e size code
+ * @param size - The size string
+ * @returns PF2e size code
+ */
+function convertSizeToPF2e(size) {
+    const sizeMap = {
+        Tiny: 'tiny',
+        Small: 'sm',
+        Medium: 'med',
+        Large: 'lg',
+        Huge: 'huge',
+        Gargantuan: 'grg',
+    };
+    return sizeMap[size] || 'med';
+}
+/**
+ * PF2e skill name mapping to system keys
+ */
+const PF2E_SKILL_MAP = {
+    acrobatics: 'acr',
+    arcana: 'arc',
+    athletics: 'ath',
+    crafting: 'cra',
+    deception: 'dec',
+    diplomacy: 'dip',
+    intimidation: 'itm',
+    lore: 'lore',
+    medicine: 'med',
+    nature: 'nat',
+    occultism: 'occ',
+    performance: 'prf',
+    religion: 'rel',
+    society: 'soc',
+    stealth: 'ste',
+    survival: 'sur',
+    thievery: 'thi',
+};
+
+/**
+ * Convert PF2e abilities to Foundry format
+ */
+function convertAbilitiesPF2e(abilities) {
+    return {
+        str: { mod: abilities.str.mod },
+        dex: { mod: abilities.dex.mod },
+        con: { mod: abilities.con.mod },
+        int: { mod: abilities.int.mod },
+        wis: { mod: abilities.wis.mod },
+        cha: { mod: abilities.cha.mod },
+    };
+}
+/**
+ * Convert PF2e saves to Foundry format
+ */
+function convertSavesPF2e(saves) {
+    return {
+        fortitude: {
+            value: saves.fortitude.value,
+            rank: proficiencyToRank(saves.fortitude.proficiency),
+        },
+        reflex: {
+            value: saves.reflex.value,
+            rank: proficiencyToRank(saves.reflex.proficiency),
+        },
+        will: {
+            value: saves.will.value,
+            rank: proficiencyToRank(saves.will.proficiency),
+        },
+    };
+}
+/**
+ * Convert PF2e skills to Foundry format
+ */
+function convertSkillsPF2e(skills) {
+    const foundrySkills = {};
+    for (const skill of skills) {
+        const skillName = skill.name.toLowerCase();
+        const skillKey = PF2E_SKILL_MAP[skillName];
+        if (skillKey) {
+            foundrySkills[skillKey] = {
+                rank: proficiencyToRank(skill.proficiency),
+            };
+        }
+        else {
+            // Handle custom skills (like lore)
+            foundrySkills[skillName] = {
+                rank: proficiencyToRank(skill.proficiency),
+            };
+        }
+    }
+    return foundrySkills;
+}
+/**
+ * Convert perception to Foundry format
+ */
+function convertPerceptionPF2e(perception) {
+    return {
+        value: perception.value,
+        rank: proficiencyToRank(perception.proficiency),
+    };
+}
+/**
+ * Convert speeds to Foundry format
+ */
+function convertSpeedsPF2e(speeds) {
+    const walkSpeed = speeds.walk || 30;
+    const otherSpeeds = [];
+    for (const [type, value] of Object.entries(speeds)) {
+        if (type !== 'walk') {
+            otherSpeeds.push({ type, value });
+        }
+    }
+    return {
+        value: walkSpeed,
+        otherSpeeds,
+    };
+}
+/**
+ * Convert attributes to Foundry format
+ */
+function convertAttributesPF2e(actor) {
+    const speedData = convertSpeedsPF2e(actor.speeds);
+    return {
+        ac: {
+            value: actor.ac.value,
+        },
+        hp: {
+            value: actor.health.value,
+            max: actor.health.max,
+            temp: 0,
+        },
+        speed: speedData,
+        perception: convertPerceptionPF2e(actor.perception),
+    };
+}
+/**
+ * Convert details to Foundry format
+ */
+function convertDetailsPF2e(actor) {
+    return {
+        level: {
+            value: actor.level,
+        },
+        languages: {
+            value: actor.languages,
+        },
+    };
+}
+/**
+ * Convert traits to Foundry format
+ */
+function convertTraitsPF2e(actor) {
+    return {
+        value: actor.traits,
+        size: {
+            value: convertSizeToPF2e(actor.size),
+        },
+    };
+}
+/**
+ * Convert immunities to Foundry format
+ */
+function convertImmunitiesPF2e(immunities) {
+    return immunities.map((immunity) => ({
+        type: immunity,
+    }));
+}
+/**
+ * Convert resistances to Foundry format
+ */
+function convertResistancesPF2e(resistances) {
+    return resistances.map((resistance) => ({
+        type: resistance.type,
+        value: resistance.value || 0,
+        exceptions: resistance.exceptions ? [resistance.exceptions] : undefined,
+    }));
+}
+/**
+ * Convert weaknesses to Foundry format
+ */
+function convertWeaknessesPF2e(weaknesses) {
+    return weaknesses.map((weakness) => ({
+        type: weakness.type,
+        value: weakness.value,
+    }));
+}
+/**
+ * Main conversion function from ImportPF2eActor to Foundry PF2e format
+ */
+function actorToPF2e(actor) {
+    return {
+        abilities: convertAbilitiesPF2e(actor.abilities),
+        attributes: convertAttributesPF2e(actor),
+        details: convertDetailsPF2e(actor),
+        saves: convertSavesPF2e(actor.saves),
+        skills: convertSkillsPF2e(actor.skills),
+        traits: convertTraitsPF2e(actor),
+        resources: {
+            immunities: convertImmunitiesPF2e(actor.immunities),
+            resistances: convertResistancesPF2e(actor.resistances),
+            weaknesses: convertWeaknessesPF2e(actor.weaknesses),
+        },
+    };
+}
+
 let dndPacks = null;
 let otherPacks = null;
 const getItemFromPackAsync = async (pack, itemName) => {
@@ -2861,7 +3936,10 @@ async function itemToFifth(item) {
     };
 }
 
-async function txtRoute(stringData) {
+/**
+ * Route for D&D 5e text import (existing functionality)
+ */
+async function txtRoute5e(stringData) {
     const actor = textToActor(stringData);
     const { items } = actor;
     const preparedItems = await Promise.all(items.map((item) => {
@@ -2887,7 +3965,7 @@ async function txtRoute(stringData) {
     const foundryActor = await Actor.create({
         name: actor.name,
         type: 'npc',
-        data: convertedActor,
+        system: convertedActor,
     });
     if (!foundryActor)
         return;
@@ -2895,6 +3973,65 @@ async function txtRoute(stringData) {
         const foundryItem = new Item(item);
         await foundryActor.createEmbeddedDocuments('Item', [foundryItem.toObject()]);
     }));
+}
+/**
+ * Route for Pathfinder 2e text import (new functionality)
+ */
+async function txtRoutePF2e(stringData) {
+    try {
+        console.log('=== PF2e Import Debug Info ===');
+        console.log('Input lines:');
+        stringData.split('\n').forEach((line, i) => {
+            console.log(`  Line ${i + 1}: "${line}"`);
+        });
+        const actor = textToPF2eActor(stringData);
+        console.log('Parsed actor:', actor);
+        const convertedActor = actorToPF2e(actor);
+        console.log('Converted actor data:', convertedActor);
+        // Create the actor in Foundry
+        const foundryActor = await Actor.create({
+            name: actor.name,
+            type: 'npc',
+            system: convertedActor,
+        });
+        if (!foundryActor) {
+            console.error('Failed to create Foundry actor');
+            ui.notifications?.error('Failed to create actor in Foundry');
+            return;
+        }
+        console.log('Successfully created PF2e actor:', foundryActor.name);
+        ui.notifications?.info(`Successfully imported PF2e creature: ${foundryActor.name}`);
+        // TODO: Add item support for PF2e when needed
+        // Currently focused on basic stat block parsing
+    }
+    catch (error) {
+        console.error('=== PF2e Import Error ===');
+        console.error('Error details:', error);
+        if (error instanceof Error) {
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            ui.notifications?.error(`PF2e Import Error: ${error.message}`);
+        }
+        else {
+            ui.notifications?.error('PF2e Import Error: Unknown error occurred');
+        }
+        throw error;
+    }
+}
+/**
+ * Main route handler - detects game system and routes appropriately
+ */
+async function txtRoute(stringData) {
+    const gameSystem = game?.system?.id;
+    if (gameSystem === 'pf2e') {
+        console.log('Processing as Pathfinder 2e actor');
+        await txtRoutePF2e(stringData);
+    }
+    else {
+        // Default to D&D 5e for backward compatibility
+        console.log('Processing as D&D 5e actor');
+        await txtRoute5e(stringData);
+    }
 }
 async function processActorInput({ jsonfile, clipboardInput }) {
     if (clipboardInput) {

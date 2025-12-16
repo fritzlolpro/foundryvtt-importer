@@ -37,7 +37,12 @@ Create foundry elements from external sources.
 
 ## Support
 
-Currently some features only support the 5e game system.
+Currently supports **D&D 5e** and **Pathfinder 2e** game systems. The module automatically detects which system you're using and applies the appropriate parser.
+
+### Supported Systems
+
+- **D&D 5e**: Full support for actors, items, spells, tables, and journals
+- **Pathfinder 2e**: Actor/creature stat block parsing with automatic system detection
 
 ## Key Features
 
@@ -58,25 +63,31 @@ Reddit.
 
 ---
 
-**NOTE**
+### Actors
 
-Importing Reddit table collections are great when paired with the [Table Ninja](https://github.com/Adriannom/fvtt-module-table-ninja) module.
+Import actors from text based monster/creature blocks. Copy text from a PDF or other source and paste into the clipboard utility. The module will automatically detect your game system and parse accordingly.
 
----
+#### D&D 5e Actor Import
 
-### Actors (5e only)
+- Parse standard 5e monster stat blocks
+- Import MCDM Action Oriented monsters (e.g., from [Flee, Mortals!](https://files.mcdmproductions.com/FleeMortals/FleeMortalsPreview.pdf))
+- Build [Universal NPC Roleplay Templates](https://thealexandrian.net/wordpress/37916/roleplaying-games/universal-npc-roleplaying-template) using [ChatGPT](https://openai.com/blog/chatgpt/) and auto-import the stat block
 
-Import actors from text based monster blocks. I currently either copy my pdf to
-text, or use a pdf tool (like zathura) that allows me to copy blocks of text.
+#### Pathfinder 2e Actor Import
 
-Paste the block of text into the clipboard utility, and a best effort monster
-will be generated matching the text.
+- Parse PF2e creature stat blocks from PDFs (e.g., Archives of Nethys format)
+- Automatically extracts:
+  - Creature level, size, and traits
+  - Perception with special senses
+  - Languages
+  - Ability modifiers (Str, Dex, Con, Int, Wis, Cha)
+  - Saves (Fort, Ref, Will) with proficiency levels
+  - Skills with modifiers
+  - AC, HP, speeds (walk, fly, burrow, etc.)
+  - Immunities, resistances, and weaknesses
+- Works with creatures of any level (-1 to 25+)
 
-Import MCDM Action Oriented monsters, such as found [here](https://files.mcdmproductions.com/FleeMortals/FleeMortalsPreview.pdf)
-
-Build a [Universal NPC Roleplay Template](https://thealexandrian.net/wordpress/37916/roleplaying-games/universal-npc-roleplaying-template) using [Chat GPT](https://openai.com/blog/chatgpt/) and auto import the stat block.
-(see example in Actor section)
-
+**System Detection**: The module automatically detects whether you're using D&D 5e or Pathfinder 2e based on `game.system.id` and uses the appropriate parser.
 
 ### Items (5e only)
 
