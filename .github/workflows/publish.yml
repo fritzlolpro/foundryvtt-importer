@@ -9,6 +9,11 @@ on:
     tags:
       - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for release (e.g., v0.2.51)'
+        required: true
+        type: string
 
 env:
   node_version: 16
@@ -58,6 +63,15 @@ jobs:
           name: dist
           path: dist
 
+      - name: Determine tag name
+        id: get_tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create zip file
         working-directory: ./dist
         run: zip -r ../module.zip .
@@ -65,6 +79,8 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.get_tag.outputs.tag }}
+          name: Release ${{ steps.get_tag.outputs.tag }}
           files: |
             module.zip
             dist/module.json
