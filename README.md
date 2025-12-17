@@ -1,13 +1,4 @@
 # Foundry VTT Content Parser
-
-[![Checks](https://github.com/EthanJWright/foundryvtt-importer/workflows/Checks/badge.svg)](https://github.com/EthanJWright/foundryvtt-importer/actions)
-![Latest Release Download Count](https://img.shields.io/github/downloads/EthanJWright/foundryvtt-importer/latest/module.zip)
-[![Github All Releases](https://img.shields.io/github/downloads/EthanJWright/foundryvtt-importer/total.svg)]()
-
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/U6U877XT1)
-
-Create foundry elements from external sources.
-
 ## Usage
 
 1. Press import button in tab you are trying to import
