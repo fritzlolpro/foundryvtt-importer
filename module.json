@@ -1,7 +1,7 @@
 {
   "id": "foundryvtt-importer",
   "name": "foundryvtt-importer",
-  "title": "Foundry VTT Content Parser",
+  "title": "Foundry VTT Content Importer",
   "description": "import foundry entities from external sources",
   "version": "0.3.00",
   "author": "EthanJWright",
