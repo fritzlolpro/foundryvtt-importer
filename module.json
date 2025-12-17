@@ -4,7 +4,7 @@
   "title": "Foundry VTT Content Importer",
   "description": "import foundry entities from external sources",
   "version": "0.3.00",
-  "author": "EthanJWright",
+  "author": "Theodore Almazovich & EthanJWright",
   "authors": [
     {
       "name": "EthanJWright",
