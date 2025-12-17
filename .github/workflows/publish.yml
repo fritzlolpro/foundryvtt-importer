@@ -62,16 +62,12 @@ jobs:
         working-directory: ./dist
         run: zip -r ../module.zip .
 
-      - name: Extract version
-        run: |
-          echo "::set-output name=version::$(jq -r '.version' package.json)"
-        id: extract_version
-
       - name: Create release
-        id: create_version_release
-        uses: ncipollo/release-action@v1
+        uses: softprops/action-gh-release@v2
         with:
-          allowUpdates: false
-          name: ${{steps.extract_version.outputs.version}}
-          token: ${{ secrets.GH_PAT }}
-          artifacts: './dist/module.json, ./module.zip'
+          files: |
+            module.zip
+            dist/module.json
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
